@@ -1,0 +1,46 @@
+
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.4
+    container_name: devpilot-mysql
+    restart: unless-stopped
+
+    environment:
+      MYSQL_ROOT_PASSWORD: Naveen@12345
+      MYSQL_DATABASE: devpilot
+
+    ports:
+      - "3307:3306"
+
+    volumes:
+      - devpilot_mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "mysqladmin ping -h localhost -uroot -p$${MYSQL_ROOT_PASSWORD}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: devpilot-qdrant
+    restart: unless-stopped
+
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+# Persistent Volumes
+volumes:
+  devpilot_mysql_data:
+  qdrant_data:
