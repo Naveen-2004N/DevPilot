@@ -23,6 +23,9 @@ public class CodeContextRetriever {
     private final CitationMapper citationMapper; 
 
     public RetrievedContext retrieve(UUID repositoryId, String question) {
+        List<Document> documents = List.of();
+
+        // 1. Try vector similarity search with metadata filter
         try {
             var filter = new FilterExpressionBuilder()
                     .eq(RagSettings.METADATA_REPO_ID, repositoryId.toString())
@@ -34,30 +37,48 @@ public class CodeContextRetriever {
                     .filterExpression(filter)
                     .build();
 
-            var documents = vectorStore.similaritySearch(search);
-
-            if (documents == null || documents.isEmpty()) {
-                return new RetrievedContext(List.of(), NO_MATCHES);
-            }
-
-            var citations = documents.stream()
-                    .map(citationMapper::fromDocument)
-                    .distinct()
-                    .toList();
-
-            var contextText = documents.stream()
-                    .map(Document::getText)
-                    .collect(Collectors.joining("\n\n---\n\n"));
-
-            if (contextText.isBlank()) {
-                contextText = NO_MATCHES;
-            }
-
-            return new RetrievedContext(citations, contextText);
+            documents = vectorStore.similaritySearch(search);
         } catch (Exception ex) {
-            log.warn("Vector search failed for repo {}: {}. Continuing without vector store matches.",
-                    repositoryId, ex.getMessage());
+            log.warn("Filtered vector search failed ({}). Falling back to search with in-memory filter...", ex.getMessage());
+            // 2. If Qdrant requires payload index for 'repoId', search without filter and filter in-memory
+            try {
+                var search = SearchRequest.builder()
+                        .query(question)
+                        .topK(RagSettings.TOP_K_CHUNKS * 2)
+                        .build();
+
+                List<Document> rawDocs = vectorStore.similaritySearch(search);
+                if (rawDocs != null && !rawDocs.isEmpty()) {
+                    List<Document> matched = rawDocs.stream()
+                            .filter(doc -> {
+                                Object rId = doc.getMetadata().get(RagSettings.METADATA_REPO_ID);
+                                return rId == null || repositoryId.toString().equalsIgnoreCase(String.valueOf(rId));
+                            })
+                            .toList();
+                    documents = matched.isEmpty() ? rawDocs : matched;
+                }
+            } catch (Exception innerEx) {
+                log.warn("Vector search failed completely: {}. Continuing without vector store matches.", innerEx.getMessage());
+            }
+        }
+
+        if (documents == null || documents.isEmpty()) {
             return new RetrievedContext(List.of(), NO_MATCHES);
         }
+
+        var citations = documents.stream()
+                .map(citationMapper::fromDocument)
+                .distinct()
+                .toList();
+
+        var contextText = documents.stream()
+                .map(Document::getText)
+                .collect(Collectors.joining("\n\n---\n\n"));
+
+        if (contextText.isBlank()) {
+            contextText = NO_MATCHES;
+        }
+
+        return new RetrievedContext(citations, contextText);
     }
 }
