@@ -89,8 +89,8 @@ export default function HomePage() {
               <ArrowRight className="size-4" />
             </a>
 
-            <Link
-              to="/login"
+            <a
+              href="#features"
               className={cn(
                 buttonVariants({
                   variant: "outline",
@@ -99,11 +99,11 @@ export default function HomePage() {
               )}
             >
               See how it works
-            </Link>
+            </a>
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section id="features" className="grid gap-4 md:grid-cols-3">
           {features.map((item) => (
             <div
               key={item.title}
